@@ -1,0 +1,14 @@
+{
+  "name": "sovereign-vault-starter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Privacy-first sovereign vault starter with Supabase RLS, client-side encryption, audit chaining, and auto-import tooling.",
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/vault_crypto.mjs && node --check src/merkle.mjs && node --check scripts/auto_import.mjs",
+    "test:crypto": "node tests/crypto_merkle.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
