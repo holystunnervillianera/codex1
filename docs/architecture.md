@@ -103,3 +103,23 @@ This makes alteration detectable even if a database administrator attempts to re
 - Test restore procedures quarterly.
 - Run imports from a locked-down machine with full-disk encryption.
 - Review `audit_events` and anchored roots regularly.
+
+## Production workers
+
+The repository now includes three production-oriented entry points:
+
+- `scripts/auto_import.mjs` continuously imports from local/Proton-synced folders on a strict 5 or 10 minute cadence.
+- `scripts/ai_worker.mjs` processes queued `ai_jobs` locally, decrypts only on the owner-controlled host, and re-encrypts derived JSON outputs before upload.
+- `scripts/vaultctl.mjs` queues AI jobs, records blockchain audit anchors, and verifies the local JSONL hash chain.
+
+The AI worker intentionally supports only local zero-leakage jobs by default. Public or hosted AI processing must be represented with an explicit policy flag and should be reviewed per object.
+
+## Recovery and verification
+
+A production deployment should retain three independent recovery materials:
+
+1. The local or hardware-protected vault master key.
+2. Encrypted Supabase Storage object backups and database dumps.
+3. Local JSONL audit mirrors plus blockchain transaction ids for anchored Merkle roots.
+
+To verify continuity, run `vaultctl verify-local-audit` against the local JSONL mirror and compare anchored Merkle roots in `audit_anchors` with independent blockchain records.

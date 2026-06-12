@@ -1,0 +1,15 @@
+[Unit]
+Description=Sovereign Vault auto import for %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/sovereign-vault
+EnvironmentFile=/etc/sovereign-vault/%i.env
+ExecStart=/usr/bin/node /opt/sovereign-vault/scripts/auto_import.mjs --source ${VAULT_IMPORT_SOURCE} --interval-minutes ${VAULT_IMPORT_INTERVAL_MINUTES} --once
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=${VAULT_IMPORT_SOURCE} /var/lib/sovereign-vault

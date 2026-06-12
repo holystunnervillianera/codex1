@@ -73,3 +73,47 @@ This starter intentionally avoids pretending to solve every integration in one c
 3. Add a private AI worker that pulls `ai_jobs`, decrypts locally, processes locally, encrypts outputs, and writes append-only audit events.
 4. Add blockchain anchoring using your selected chain and wallet.
 5. Add Proton-specific import adapters for the exact Proton product/export mechanism you use.
+
+## Production command set
+
+Run all validation checks:
+
+```bash
+npm test
+```
+
+Queue a local-only AI job for an imported object:
+
+```bash
+node scripts/vaultctl.mjs enqueue-ai --object-id OBJECT_UUID --job-type metadata_extract
+```
+
+Process queued local AI jobs without public AI calls:
+
+```bash
+node scripts/ai_worker.mjs --limit 5
+```
+
+Anchor an audit Merkle root after you publish the displayed root with your own wallet/tooling:
+
+```bash
+node scripts/vaultctl.mjs anchor-audit --chain ethereum --transaction-id 0xYOUR_TX_ID
+```
+
+Verify the local JSONL audit mirror has an unbroken previous-hash chain:
+
+```bash
+node scripts/vaultctl.mjs verify-local-audit --file ./vault-audit-local.jsonl
+```
+
+## Production hardening added
+
+- The second migration creates private Supabase Storage buckets when possible and keeps them non-public.
+- `retention_holds` records lifetime legal/operational holds for objects that must not be removed.
+- Retained vault objects and import runs cannot be deleted through the owner API.
+- Non-local AI jobs are rejected unless the job policy explicitly allows public AI processing.
+- The worker only implements local zero-leakage AI jobs (`metadata_extract`, `classify`, and `summarize`) and writes encrypted JSON outputs back to `vault-processed`.
+
+## Production scheduling
+
+Systemd unit templates are provided for hardened Linux hosts in `deploy/systemd/`. Use them to run imports and local AI processing as timer-driven one-shot jobs instead of long-running shell sessions.

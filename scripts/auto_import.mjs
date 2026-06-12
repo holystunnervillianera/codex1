@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-import { appendFile, readdir, readFile, stat } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import { basename, join, relative } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { encryptFile, loadMasterKeyFromEnv, sha256Hex } from '../src/vault_crypto.mjs';
-import { chainedAuditHash } from '../src/merkle.mjs';
+import { encryptFile, loadMasterKeyFromEnv } from '../src/vault_crypto.mjs';
+import { loadLastLocalAuditHash, recordAuditEvent } from '../src/audit_log.mjs';
+import { SupabaseRestClient, requiredEnv } from '../src/supabase_rest.mjs';
 
 function parseArgs(argv) {
   const args = {
@@ -35,13 +36,6 @@ function parseArgs(argv) {
   return args;
 }
 
-function requiredEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required`);
-  }
-  return value;
-}
 
 async function walkFiles(root) {
   const entries = await readdir(root, { withFileTypes: true });
@@ -59,143 +53,45 @@ async function walkFiles(root) {
   return files;
 }
 
-async function supabaseFetch(path, options = {}) {
-  const supabaseUrl = requiredEnv('SUPABASE_URL').replace(/\/$/, '');
-  const anonKey = requiredEnv('SUPABASE_ANON_KEY');
-  const accessToken = requiredEnv('SUPABASE_ACCESS_TOKEN');
-
-  const response = await fetch(`${supabaseUrl}${path}`, {
-    ...options,
-    headers: {
-      apikey: anonKey,
-      authorization: `Bearer ${accessToken}`,
-      ...(options.headers ?? {}),
-    },
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Supabase request failed ${response.status}: ${body}`);
-  }
-
-  const text = await response.text();
-  return text ? JSON.parse(text) : null;
+async function createImportRun(client, ownerId) {
+  return await client.insert('import_runs', { owner_id: ownerId, status: 'started' });
 }
 
-async function currentUserId() {
-  const user = await supabaseFetch('/auth/v1/user');
-  if (!user?.id) {
-    throw new Error('Could not resolve authenticated Supabase user id');
-  }
-  return user.id;
-}
-
-async function loadLastAuditHash(localAuditLog) {
-  try {
-    const log = await readFile(localAuditLog, 'utf8');
-    const lines = log.trim().split('\n').filter(Boolean);
-    if (lines.length === 0) {
-      return null;
-    }
-    return JSON.parse(lines.at(-1)).event_hash ?? null;
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      return null;
-    }
-    throw error;
-  }
-}
-
-async function appendLocalAudit(localAuditLog, event) {
-  await appendFile(localAuditLog, `${JSON.stringify(event)}\n`, { mode: 0o600 });
-}
-
-async function createImportRun(ownerId) {
-  const rows = await supabaseFetch('/rest/v1/import_runs', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      prefer: 'return=representation',
-    },
-    body: JSON.stringify({ owner_id: ownerId, status: 'started' }),
-  });
-  return rows[0];
-}
-
-async function completeImportRun(importRunId, statusValue, filesSeen, filesImported, errorMessage = null) {
-  await supabaseFetch(`/rest/v1/import_runs?id=eq.${importRunId}`, {
-    method: 'PATCH',
-    headers: {
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      status: statusValue,
-      completed_at: new Date().toISOString(),
-      files_seen: filesSeen,
-      files_imported: filesImported,
-      error_message: errorMessage,
-    }),
+async function completeImportRun(client, importRunId, statusValue, filesSeen, filesImported, errorMessage = null) {
+  await client.patch('import_runs', `id=eq.${importRunId}`, {
+    status: statusValue,
+    completed_at: new Date().toISOString(),
+    files_seen: filesSeen,
+    files_imported: filesImported,
+    error_message: errorMessage,
   });
 }
 
-async function uploadCiphertext(bucket, objectPath, ciphertext) {
-  await supabaseFetch(`/storage/v1/object/${bucket}/${objectPath}`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/octet-stream',
-      'x-upsert': 'false',
-    },
-    body: ciphertext,
-  });
-}
-
-async function findVaultObjectByPlaintextHash(ownerId, plaintextSha256) {
-  const rows = await supabaseFetch(`/rest/v1/vault_objects?owner_id=eq.${ownerId}&plaintext_sha256=eq.${plaintextSha256}&select=id,object_path`);
+async function findVaultObjectByPlaintextHash(client, ownerId, plaintextSha256) {
+  const rows = await client.select('vault_objects', `owner_id=eq.${ownerId}&plaintext_sha256=eq.${plaintextSha256}&select=id,object_path`);
   return rows[0] ?? null;
 }
 
-async function insertVaultObject(row) {
-  const rows = await supabaseFetch('/rest/v1/vault_objects', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      prefer: 'return=representation',
-    },
-    body: JSON.stringify(row),
-  });
-  return rows[0];
-}
-
-async function insertAuditEvent(row) {
-  await supabaseFetch('/rest/v1/audit_events', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(row),
-  });
-}
-
-async function importOnce({ source, masterKey, ownerId, bucket, localAuditLog }) {
-  const importRun = await createImportRun(ownerId);
+async function importOnce({ client, source, masterKey, ownerId, bucket, localAuditLog }) {
+  const importRun = await createImportRun(client, ownerId);
   const files = await walkFiles(source);
   let imported = 0;
-  let previousHash = await loadLastAuditHash(localAuditLog);
+  let previousHash = await loadLastLocalAuditHash(localAuditLog);
 
   try {
     for (const filePath of files) {
       const info = await stat(filePath);
       const encrypted = await encryptFile(filePath, masterKey);
       const relativePath = relative(source, filePath).replaceAll('\\', '/');
-      const existingObject = await findVaultObjectByPlaintextHash(ownerId, encrypted.plaintextSha256);
+      const existingObject = await findVaultObjectByPlaintextHash(client, ownerId, encrypted.plaintextSha256);
       const objectPath = existingObject?.object_path ?? `${ownerId}/${encrypted.plaintextSha256}-${basename(filePath)}.enc`;
       let vaultObject = existingObject;
       let action = 'vault.object.duplicate_seen';
 
       if (!vaultObject) {
-        await uploadCiphertext(bucket, objectPath, encrypted.ciphertext);
+        await client.uploadObject(bucket, objectPath, encrypted.ciphertext);
 
-        vaultObject = await insertVaultObject({
+        vaultObject = await client.insert('vault_objects', {
           owner_id: ownerId,
           import_run_id: importRun.id,
           original_name: relativePath,
@@ -215,31 +111,28 @@ async function importOnce({ source, masterKey, ownerId, bucket, localAuditLog })
         imported += 1;
       }
 
-      const eventCore = {
-        owner_id: ownerId,
+      const auditEvent = await recordAuditEvent({
+        client,
+        ownerId,
+        localAuditLog,
+        previousHash,
         actor: 'owner:auto_import',
         action,
-        subject_type: 'vault_object',
-        subject_id: vaultObject.id,
+        subjectType: 'vault_object',
+        subjectId: vaultObject.id,
         details: {
           object_path: objectPath,
           original_name: relativePath,
           plaintext_sha256: encrypted.plaintextSha256,
           ciphertext_sha256: encrypted.ciphertextSha256,
         },
-        previous_event_hash: previousHash,
-      };
-      const eventHash = chainedAuditHash(previousHash, eventCore);
-      const auditEvent = { ...eventCore, event_hash: eventHash };
-
-      await insertAuditEvent(auditEvent);
-      await appendLocalAudit(localAuditLog, auditEvent);
-      previousHash = eventHash;
+      });
+      previousHash = auditEvent.event_hash;
     }
 
-    await completeImportRun(importRun.id, 'completed', files.length, imported);
+    await completeImportRun(client, importRun.id, 'completed', files.length, imported);
   } catch (error) {
-    await completeImportRun(importRun.id, 'failed', files.length, imported, error.message);
+    await completeImportRun(client, importRun.id, 'failed', files.length, imported, error.message);
     throw error;
   }
 
@@ -249,12 +142,15 @@ async function importOnce({ source, masterKey, ownerId, bucket, localAuditLog })
 async function main() {
   const args = parseArgs(process.argv);
   const masterKey = loadMasterKeyFromEnv();
-  const ownerId = await currentUserId();
+  const client = new SupabaseRestClient();
+  requiredEnv('SUPABASE_URL');
+  const ownerId = await client.currentUserId();
   const bucket = process.env.SUPABASE_RAW_BUCKET ?? 'vault-raw';
   const localAuditLog = process.env.VAULT_LOCAL_AUDIT_LOG ?? './vault-audit-local.jsonl';
 
   do {
     const result = await importOnce({
+      client,
       source: args.source,
       masterKey,
       ownerId,

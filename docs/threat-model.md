@@ -52,3 +52,12 @@
 3. Use separate devices/accounts for testing and production.
 4. Verify RLS with a non-owner account before adding sensitive data.
 5. Keep encrypted offline backups of both storage objects and database dumps.
+
+## Production hardening controls
+
+- Retained `vault_objects` are protected by a delete-rejecting trigger for owner API access.
+- `import_runs`, `audit_events`, and `audit_anchors` are treated as audit records and are not mutable through normal API paths.
+- Supabase Storage delete policies are intentionally absent; the authenticated owner can upload/read/update metadata but not delete objects through the configured RLS policy set.
+- Public AI usage is blocked by trigger unless `policy.allow_public_ai` is explicitly true.
+
+These controls are tamper-evident and API-hardening controls, not magic physical immutability. A hostile infrastructure administrator can still destroy infrastructure; offline encrypted backups and external anchors are mandatory for sovereign recovery.
