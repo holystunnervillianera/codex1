@@ -2,6 +2,8 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync }
 import { readFile, writeFile } from 'node:fs/promises';
 
 const ALGORITHM = 'aes-256-gcm';
+const NODE_KDF = 'scrypt';
+const WEB_KDF = 'pbkdf2-sha256';
 const KEY_BYTES = 32;
 const NONCE_BYTES = 12;
 const SALT_BYTES = 16;
@@ -45,7 +47,7 @@ export function encryptBuffer(plaintext, masterKey, additionalData = Buffer.allo
     ciphertext,
     encryption: {
       algorithm: ALGORITHM,
-      kdf: 'scrypt',
+      kdf: NODE_KDF,
       salt_b64: salt.toString('base64'),
       nonce_b64: nonce.toString('base64'),
       auth_tag_b64: authTag.toString('base64'),
@@ -58,8 +60,11 @@ export function decryptBuffer(ciphertext, masterKey, encryption, additionalData 
   if (encryption.algorithm !== ALGORITHM) {
     throw new Error(`Unsupported encryption algorithm: ${encryption.algorithm}`);
   }
-  if (encryption.kdf !== 'scrypt') {
+  if (![NODE_KDF, WEB_KDF].includes(encryption.kdf)) {
     throw new Error(`Unsupported key derivation function: ${encryption.kdf}`);
+  }
+  if (encryption.kdf === WEB_KDF) {
+    throw new Error('Browser PBKDF2-encrypted files must be processed by a WebCrypto-capable worker; use browser download/export or re-encrypt through the Node importer for local Node AI jobs.');
   }
   if (encryption.aad_sha256 !== sha256Hex(additionalData)) {
     throw new Error('Additional authenticated data hash mismatch');

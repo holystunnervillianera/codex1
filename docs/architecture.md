@@ -104,6 +104,16 @@ This makes alteration detectable even if a database administrator attempts to re
 - Run imports from a locked-down machine with full-disk encryption.
 - Review `audit_events` and anchored roots regularly.
 
+## Visual no-code web console
+
+`web/index.html` provides an accessible, visual console for non-coding use. The browser app connects directly to Supabase with the owner session, encrypts dropped files with WebCrypto before upload, creates `vault_objects`, records audit events, shows recent vault items, and queues local AI jobs. It is intentionally static so it can be hosted locally, on a private intranet, or behind an owner-controlled access layer without adding a telemetry backend.
+
+Browser uploads use PBKDF2-SHA256 WebCrypto metadata because browser-native scrypt is not universally available. Node import jobs continue to use scrypt. Production deployments that need Node AI processing for browser-uploaded files should add a WebCrypto-capable worker or re-encrypt through the Node importer.
+
+## Multi-device macOS seeding
+
+The macOS LaunchAgent assets in `deploy/macos/` allow several owner-controlled Macs to seed the first vault import. Each Mac runs `scripts/auto_import.mjs --once` every 5 or 10 minutes against a chosen local folder, Proton Drive sync folder, mail export, photo export, or external drive. All Macs can share the same Supabase vault and master key while keeping plaintext local to each machine.
+
 ## Production workers
 
 The repository now includes three production-oriented entry points:

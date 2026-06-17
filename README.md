@@ -19,6 +19,8 @@ A privacy-first, zero-telemetry, self-controlled data/file/asset vault blueprint
 | Client-side encryption helpers | [`src/vault_crypto.mjs`](src/vault_crypto.mjs) |
 | Hash-chain / Merkle helpers | [`src/merkle.mjs`](src/merkle.mjs) |
 | Constant auto-import runner | [`scripts/auto_import.mjs`](scripts/auto_import.mjs) |
+| Visual web console | [`web/index.html`](web/index.html) |
+| macOS multi-device seeding | [`deploy/macos/README.md`](deploy/macos/README.md) |
 | Local configuration template | [`.env.example`](.env.example) |
 
 ## Core security model
@@ -73,6 +75,28 @@ This starter intentionally avoids pretending to solve every integration in one c
 3. Add a private AI worker that pulls `ai_jobs`, decrypts locally, processes locally, encrypts outputs, and writes append-only audit events.
 4. Add blockchain anchoring using your selected chain and wallet.
 5. Add Proton-specific import adapters for the exact Proton product/export mechanism you use.
+
+## Visual web console
+
+A non-coding browser console is available in `web/`. It is designed for visual upload, file review, and local-AI job queueing. It uses browser WebCrypto so files are encrypted before upload; secrets stay in browser memory unless you choose session-only setting storage.
+
+Run it locally from the repository root:
+
+```bash
+npm run web
+```
+
+Then open `http://127.0.0.1:4173/web/`, connect with your Supabase URL, anon key, access token, and vault master key, and drag files into the visual drop zone.
+
+## Multi-device Apple macOS first seeding
+
+For first imports from multiple Macs, use the LaunchAgent installer in `deploy/macos/`. Run this on each Mac you control:
+
+```bash
+bash deploy/macos/install-launchagent.sh --source "$HOME/Proton Drive/VaultInbox" --interval-minutes 5
+```
+
+The first run creates `~/.sovereign-vault/device.env`; fill it with your vault settings, then rerun the command. Every Mac can point at a different local/Proton/export folder while uploading encrypted ciphertext into the same cloud vault.
 
 ## Production command set
 

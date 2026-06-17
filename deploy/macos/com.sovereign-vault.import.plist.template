@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.sovereign-vault.import</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>__NODE__</string>
+      <string>__REPO__/scripts/auto_import.mjs</string>
+      <string>--source</string>
+      <string>__SOURCE__</string>
+      <string>--interval-minutes</string>
+      <string>__INTERVAL__</string>
+      <string>--once</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>SUPABASE_URL</key>
+      <string>__SUPABASE_URL__</string>
+      <key>SUPABASE_ANON_KEY</key>
+      <string>__SUPABASE_ANON_KEY__</string>
+      <key>SUPABASE_ACCESS_TOKEN</key>
+      <string>__SUPABASE_ACCESS_TOKEN__</string>
+      <key>SUPABASE_RAW_BUCKET</key>
+      <string>__SUPABASE_RAW_BUCKET__</string>
+      <key>VAULT_MASTER_KEY_B64</key>
+      <string>__VAULT_MASTER_KEY_B64__</string>
+      <key>VAULT_LOCAL_AUDIT_LOG</key>
+      <string>__VAULT_LOCAL_AUDIT_LOG__</string>
+    </dict>
+    <key>StartInterval</key>
+    <integer>__START_INTERVAL_SECONDS__</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>__LOG_DIR__/import.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__LOG_DIR__/import.err.log</string>
+  </dict>
+</plist>
