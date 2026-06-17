@@ -1,0 +1,15 @@
+[Unit]
+Description=Sovereign Vault local AI worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/sovereign-vault
+EnvironmentFile=/etc/sovereign-vault/worker.env
+ExecStart=/usr/bin/node /opt/sovereign-vault/scripts/ai_worker.mjs --limit 10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/var/lib/sovereign-vault
